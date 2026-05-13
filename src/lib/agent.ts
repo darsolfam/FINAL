@@ -168,7 +168,7 @@ const tools: Anthropic.Tool[] = [
                     score: { type: 'number' },
                     distance_miles: { type: 'number', description: 'LEG distance from previous stop or start.' },
                     drive_time_hours: { type: 'number', description: 'LEG drive time from previous stop or start.' },
-                    source_url: { type: 'string', description: 'Official website or booking URL for this location. For Recreation.gov facilities use https://www.recreation.gov/camping/campgrounds/<FacilityID>. For USFS use the forest homepage. For BLM dispersed sites use the relevant BLM field office page. Always include a real, verifiable URL.' },
+                    source_url: { type: 'string', description: 'MUST be a URL that was returned to you by one of the search tools (each result now includes a source_url field). NEVER invent or guess URLs. If a search result did not provide a source_url, leave this field empty — do not fabricate one.' },
                   },
                   required: ['name', 'lat', 'lon', 'description', 'terrain_rating', 'reasoning', 'score', 'distance_miles', 'drive_time_hours'],
                 },
@@ -214,7 +214,7 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
         input.radius_miles,
         input.activity  // intentionally undefined when agent omits it — don't default to CAMPING
       );
-      // Trim to fields the agent actually needs; drop verbose descriptions to save context.
+      // Construct verified URLs server-side so the agent never has to guess them.
       return JSON.stringify(results.map((r) => ({
         id: r.id,
         name: r.name,
@@ -223,6 +223,7 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
         type: r.type,
         reservable: r.reservable,
         activities: r.activities.slice(0, 5),
+        source_url: `https://www.recreation.gov/camping/campgrounds/${r.id}`,
       })));
     }
     case 'search_dispersed_camping': {
@@ -230,11 +231,13 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
         { lat: input.lat, lon: input.lon },
         input.radius_miles
       );
+      // Dispersed sites have no canonical URL — link to an iOverlander map search around the coords.
       return JSON.stringify(results.map((r) => ({
         name: r.name,
         lat: r.coordinates.lat,
         lon: r.coordinates.lon,
         type: r.type,
+        source_url: `https://www.ioverlander.com/places?latitude=${r.coordinates.lat}&longitude=${r.coordinates.lon}`,
       })));
     }
     case 'search_offroad_trails': {
@@ -247,6 +250,7 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
         lat: r.coordinates.lat,
         lon: r.coordinates.lon,
         type: r.type,
+        source_url: `https://www.ioverlander.com/places?latitude=${r.coordinates.lat}&longitude=${r.coordinates.lon}`,
       })));
     }
     case 'get_weather': {
