@@ -11,6 +11,32 @@ import LegConnector from '@/components/LegConnector';
 import { UserQuery, PlanResult, TripDuration } from '@/types';
 import { Compass } from 'lucide-react';
 
+function distributeStopDates(
+  tripStartDate: string,
+  tripEndDate: string,
+  totalStops: number
+): Array<{ startDate: string; endDate: string }> {
+  const start = new Date(tripStartDate);
+  const end = new Date(tripEndDate);
+  const totalDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  const daysPerStop = Math.floor(totalDays / totalStops);
+  const remainder = totalDays % totalStops;
+  const ranges: Array<{ startDate: string; endDate: string }> = [];
+  let cursor = new Date(start);
+  for (let i = 0; i < totalStops; i++) {
+    const days = daysPerStop + (i < remainder ? 1 : 0);
+    const stopStart = new Date(cursor);
+    const stopEnd = new Date(cursor);
+    stopEnd.setDate(stopEnd.getDate() + days);
+    ranges.push({
+      startDate: stopStart.toISOString().split('T')[0],
+      endDate: stopEnd.toISOString().split('T')[0],
+    });
+    cursor = new Date(stopEnd);
+  }
+  return ranges;
+}
+
 export default function Home() {
   const [result, setResult] = useState<PlanResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -18,6 +44,8 @@ export default function Home() {
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastDuration, setLastDuration] = useState<TripDuration>('weekend');
+  const [lastTripStartDate, setLastTripStartDate] = useState<string | undefined>();
+  const [lastTripEndDate, setLastTripEndDate] = useState<string | undefined>();
 
   async function handleSubmit(query: UserQuery) {
     setLoading(true);
@@ -26,6 +54,8 @@ export default function Home() {
     setSelectedStopId(null);
     setError(null);
     setLastDuration(query.duration);
+    setLastTripStartDate(query.tripStartDate);
+    setLastTripEndDate(query.tripEndDate);
 
     try {
       const res = await fetch('/api/plan', {
@@ -109,33 +139,50 @@ export default function Home() {
                       {selectedRoute.name} — {stops.length} Stop{stops.length !== 1 ? 's' : ''}
                     </h2>
                     <div className="space-y-1">
-                      {stops.map((d, i) => {
-                        const prev = stops[i - 1];
-                        const next = stops[i + 1];
-                        const fromLabel = i === 0 ? (result.startLabel ?? 'Start') : prev.name;
-                        return (
-                          <div key={d.id}>
-                            {d.driveTimeHours > 0 && (
-                              <LegConnector
-                                fromLabel={fromLabel}
-                                toLabel={d.name}
-                                driveTimeHours={d.driveTimeHours}
-                                distanceMiles={d.distanceMiles}
+                      {(() => {
+                        const stopDateRanges =
+                          lastTripStartDate && lastTripEndDate
+                            ? distributeStopDates(lastTripStartDate, lastTripEndDate, stops.length)
+                            : null;
+                        return stops.map((d, i) => {
+                          const prev = stops[i - 1];
+                          const next = stops[i + 1];
+                          const fromLabel = i === 0 ? (result.startLabel ?? 'Start') : prev.name;
+                          const stopDates = stopDateRanges?.[i];
+                          return (
+                            <div key={d.id}>
+                              {d.driveTimeHours > 0 && (
+                                <LegConnector
+                                  fromLabel={fromLabel}
+                                  toLabel={d.name}
+                                  driveTimeHours={d.driveTimeHours}
+                                  distanceMiles={d.distanceMiles}
+                                />
+                              )}
+                              <DestinationCard
+                                destination={d}
+                                rank={i + 1}
+                                selected={selectedStopId === d.id}
+                                duration={lastDuration}
+                                totalStops={stops.length}
+                                nextStopName={next?.name}
+                                nextStopDriveHours={next?.driveTimeHours}
+                                stopStartDate={stopDates?.startDate}
+                                stopEndDate={stopDates?.endDate}
+                                onClick={() => setSelectedStopId(d.id)}
                               />
-                            )}
-                            <DestinationCard
-                              destination={d}
-                              rank={i + 1}
-                              selected={selectedStopId === d.id}
-                              duration={lastDuration}
-                              totalStops={stops.length}
-                              nextStopName={next?.name}
-                              nextStopDriveHours={next?.driveTimeHours}
-                              onClick={() => setSelectedStopId(d.id)}
-                            />
-                          </div>
-                        );
-                      })}
+                            </div>
+                          );
+                        });
+                      })()}
+                      {selectedRoute.returnDriveHours != null && selectedRoute.returnDistanceMiles != null && (
+                        <LegConnector
+                          fromLabel={stops[stops.length - 1]?.name ?? 'Last stop'}
+                          toLabel={result.startLabel ?? 'Home'}
+                          driveTimeHours={selectedRoute.returnDriveHours}
+                          distanceMiles={selectedRoute.returnDistanceMiles}
+                        />
+                      )}
                     </div>
                   </div>
                 )}

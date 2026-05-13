@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { UserQuery, VehicleTier, TripDuration, ComfortLevel } from '@/types';
-import { MapPin, Clock, Car, Tent, AlertTriangle } from 'lucide-react';
+import { MapPin, Clock, Car, Tent, AlertTriangle, Calendar } from 'lucide-react';
 
 interface Props {
   onSubmit: (query: UserQuery) => void;
@@ -16,11 +16,30 @@ const VEHICLE_OPTIONS: { value: VehicleTier; label: string; description: string 
   { value: 'overlander', label: 'Full Overlander', description: 'Built rig with lockers & armor — technical routes' },
 ];
 
-const DURATION_OPTIONS: { value: TripDuration; label: string }[] = [
-  { value: 'day', label: 'Day Trip' },
-  { value: 'weekend', label: 'Weekend' },
-  { value: 'multiday', label: 'Multi-Day Expedition' },
+const COMFORT_OPTIONS: { value: ComfortLevel; label: string; description: string }[] = [
+  { value: 'light', label: 'Light', description: 'Toilets, water, designated sites' },
+  { value: 'medium', label: 'Medium', description: 'Remote-ish, some cell coverage' },
+  { value: 'hard', label: 'Hard', description: "You're on your own — fully off-grid" },
 ];
+
+function deriveDuration(startDate: string, endDate: string): TripDuration {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  if (days <= 0) return 'day';
+  if (days <= 2) return 'weekend';
+  return 'multiday';
+}
+
+function today(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function daysFromNow(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split('T')[0];
+}
 
 export default function InputForm({ onSubmit, loading }: Props) {
   const [form, setForm] = useState<UserQuery>({
@@ -30,18 +49,28 @@ export default function InputForm({ onSubmit, loading }: Props) {
     vehicleTier: 'stock4wd',
     comfortLevel: 'medium',
     freeformConstraints: '',
+    tripStartDate: daysFromNow(7),
+    tripEndDate: daysFromNow(9),
   });
 
-  const COMFORT_OPTIONS: { value: ComfortLevel; label: string; description: string }[] = [
-    { value: 'light', label: 'Light', description: 'Toilets, water, designated sites' },
-    { value: 'medium', label: 'Medium', description: 'Remote-ish, some cell coverage' },
-    { value: 'hard', label: 'Hard', description: 'You\'re on your own — fully off-grid' },
-  ];
+  function handleDateChange(field: 'tripStartDate' | 'tripEndDate', value: string) {
+    const updated = { ...form, [field]: value };
+    if (updated.tripStartDate && updated.tripEndDate) {
+      updated.duration = deriveDuration(updated.tripStartDate, updated.tripEndDate);
+    }
+    // Keep end date after start date
+    if (field === 'tripStartDate' && updated.tripEndDate && value > updated.tripEndDate) {
+      updated.tripEndDate = value;
+    }
+    setForm(updated);
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(form);
   };
+
+  const durationLabel = form.duration === 'day' ? 'Day Trip' : form.duration === 'weekend' ? 'Weekend' : 'Multi-Day';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -60,26 +89,35 @@ export default function InputForm({ onSubmit, loading }: Props) {
         />
       </div>
 
-      {/* Duration */}
+      {/* Trip dates */}
       <div>
         <label className="flex items-center gap-2 text-sm font-semibold text-stone-200 mb-2">
-          <Clock size={14} /> Trip Duration
+          <Calendar size={14} /> Trip Dates
+          {form.tripStartDate && form.tripEndDate && (
+            <span className="ml-auto text-xs font-normal text-amber-400">{durationLabel}</span>
+          )}
         </label>
         <div className="flex gap-2">
-          {DURATION_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setForm({ ...form, duration: opt.value })}
-              className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
-                form.duration === opt.value
-                  ? 'bg-amber-500 text-stone-900'
-                  : 'bg-stone-800 text-stone-400 hover:bg-stone-700'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+          <div className="flex-1">
+            <div className="text-xs text-stone-500 mb-1">Departure</div>
+            <input
+              type="date"
+              value={form.tripStartDate ?? ''}
+              min={today()}
+              onChange={(e) => handleDateChange('tripStartDate', e.target.value)}
+              className="w-full bg-stone-800 border border-stone-600 rounded-lg px-3 py-2 text-stone-100 focus:outline-none focus:border-amber-500 text-sm [color-scheme:dark]"
+            />
+          </div>
+          <div className="flex-1">
+            <div className="text-xs text-stone-500 mb-1">Return</div>
+            <input
+              type="date"
+              value={form.tripEndDate ?? ''}
+              min={form.tripStartDate ?? today()}
+              onChange={(e) => handleDateChange('tripEndDate', e.target.value)}
+              className="w-full bg-stone-800 border border-stone-600 rounded-lg px-3 py-2 text-stone-100 focus:outline-none focus:border-amber-500 text-sm [color-scheme:dark]"
+            />
+          </div>
         </div>
       </div>
 

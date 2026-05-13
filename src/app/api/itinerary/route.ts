@@ -18,14 +18,25 @@ export async function POST(req: NextRequest) {
       totalStops,
       nextStopName,
       nextStopDriveHours,
+      stopStartDate,
+      stopEndDate,
     } = await req.json();
+
+    // Compute the exact number of days this stop covers so the model doesn't overshoot.
+    const stopDays =
+      stopStartDate && stopEndDate
+        ? Math.max(1, Math.round(
+            (new Date(stopEndDate).getTime() - new Date(stopStartDate).getTime()) /
+            (1000 * 60 * 60 * 24)
+          ))
+        : null;
 
     if (!name || typeof lat !== 'number' || typeof lon !== 'number') {
       return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 });
     }
 
     const [forecast, attractions] = await Promise.all([
-      getExtendedForecast({ lat, lon }),
+      getExtendedForecast({ lat, lon }, stopStartDate),
       getNearbyAttractions({ lat, lon }),
     ]);
 
@@ -39,29 +50,31 @@ export async function POST(req: NextRequest) {
       model: 'claude-haiku-4-5',
       max_tokens: 600,
       system:
-        'You are an overlanding trip planner. Generate a focused itinerary covering ONLY this stop on a multi-stop route. Each day MUST start with a "Travel: ..." line. Use real driving values, not "minimal". If this stop has a next stop, the LAST day at this camp must drive there. If this is the final stop, the last day drives home. If this is the first stop, the first day drives in. Be concrete. Format with Day 1, Day 2, etc. Keep under 200 words.',
+        'You are an overlanding trip planner. Generate a day-by-day itinerary covering ONLY this one stop. ' +
+        'You will be told the EXACT number of days to cover — do not add extra days. ' +
+        'Label each day with its actual calendar date (e.g. "Day 1 — Sat May 17"). ' +
+        'Day 1 is the arrival/drive-in day. The final day is the departure day (drive to next stop or home). ' +
+        'Each day starts with a one-line "Travel:" note (use actual hours/miles, or "no drive — camp day" for middle days). ' +
+        'Be concrete and specific. Keep the whole response under 220 words.',
       messages: [
         {
           role: 'user',
-          content: `This is STOP ${stopIndex ?? 1} of ${totalStops ?? 1} on the route.
-Stop name: ${name}
-Trip duration: ${duration ?? 'weekend'}
-Drive INTO this stop: ${driveTimeHours ?? 'unknown'} hours (${distanceMiles ?? 'unknown'} miles)
+          content: `STOP ${stopIndex ?? 1} of ${totalStops ?? 1}: ${name}
+${stopStartDate ? `This stop covers: ${stopStartDate} to ${stopEndDate ?? stopStartDate} — EXACTLY ${stopDays} day${stopDays === 1 ? '' : 's'}. Generate exactly ${stopDays} day${stopDays === 1 ? '' : 's'}, no more.` : `Trip duration: ${duration ?? 'weekend'}`}
+Drive IN: ${driveTimeHours ?? 'unknown'} hours (${distanceMiles ?? 'unknown'} miles)
 ${
   nextStopName
-    ? `Next stop after this one: ${nextStopName} (${nextStopDriveHours ?? 'unknown'} hours drive away). This is NOT the final stop — the last day at camp must include the drive to ${nextStopName}.`
+    ? `Depart final day to: ${nextStopName} (${nextStopDriveHours ?? 'unknown'} hours away)`
     : (stopIndex ?? 1) === (totalStops ?? 1)
-      ? 'This is the FINAL stop on the route. The last day must include the drive home.'
+      ? 'FINAL STOP — last day drives home.'
       : ''
 }
 
-Weather forecast (next few periods):
-${forecast.slice(0, 6).map((f) => `- ${f.name}: ${f.shortForecast}, ${f.tempF}°F`).join('\n')}
+Weather for this stop's dates:
+${forecast.slice(0, stopDays ? Math.min(stopDays * 2, 8) : 6).map((f) => `- ${f.name}: ${f.shortForecast}, ${f.tempF}°F`).join('\n')}
 
-Nearby points of interest:
-${pointsOfInterest.map((p) => `- ${p.name} (${p.category})`).join('\n')}
-
-Generate the itinerary for THIS stop only, with concrete travel times in/out.`,
+Nearby things to do:
+${pointsOfInterest.map((p) => `- ${p.name} (${p.category})`).join('\n')}`,
         },
       ],
     });

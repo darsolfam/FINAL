@@ -125,7 +125,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'get_drive_time',
-    description: 'Get drive distance and time between two coordinates.',
+    description: 'Get drive distance and time between two coordinates. Specify road_type so realistic off-road pacing is applied: "paved" for highway/pavement, "dirt" for maintained forest roads and gravel, "technical" for rocky/4x4/shelf roads.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -133,6 +133,7 @@ const tools: Anthropic.Tool[] = [
         origin_lon: { type: 'number' },
         dest_lat: { type: 'number' },
         dest_lon: { type: 'number' },
+        road_type: { type: 'string', enum: ['paved', 'dirt', 'technical'], description: 'Surface type for the leg. Dirt and technical legs will have a multiplier applied to account for realistic off-road speeds.' },
       },
       required: ['origin_lat', 'origin_lon', 'dest_lat', 'dest_lon'],
     },
@@ -167,6 +168,7 @@ const tools: Anthropic.Tool[] = [
                     score: { type: 'number' },
                     distance_miles: { type: 'number', description: 'LEG distance from previous stop or start.' },
                     drive_time_hours: { type: 'number', description: 'LEG drive time from previous stop or start.' },
+                    source_url: { type: 'string', description: 'Official website or booking URL for this location. For Recreation.gov facilities use https://www.recreation.gov/camping/campgrounds/<FacilityID>. For USFS use the forest homepage. For BLM dispersed sites use the relevant BLM field office page. Always include a real, verifiable URL.' },
                   },
                   required: ['name', 'lat', 'lon', 'description', 'terrain_rating', 'reasoning', 'score', 'distance_miles', 'drive_time_hours'],
                 },
@@ -210,23 +212,42 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
       const results = await searchRecreationGov(
         { lat: input.lat, lon: input.lon },
         input.radius_miles,
-        input.activity ?? 'CAMPING'
+        input.activity  // intentionally undefined when agent omits it — don't default to CAMPING
       );
-      return JSON.stringify(results);
+      // Trim to fields the agent actually needs; drop verbose descriptions to save context.
+      return JSON.stringify(results.map((r) => ({
+        id: r.id,
+        name: r.name,
+        lat: r.coordinates.lat,
+        lon: r.coordinates.lon,
+        type: r.type,
+        reservable: r.reservable,
+        activities: r.activities.slice(0, 5),
+      })));
     }
     case 'search_dispersed_camping': {
       const results = await searchDispersedCamping(
         { lat: input.lat, lon: input.lon },
         input.radius_miles
       );
-      return JSON.stringify(results);
+      return JSON.stringify(results.map((r) => ({
+        name: r.name,
+        lat: r.coordinates.lat,
+        lon: r.coordinates.lon,
+        type: r.type,
+      })));
     }
     case 'search_offroad_trails': {
       const results = await searchOffroadTrails(
         { lat: input.lat, lon: input.lon },
         input.radius_miles
       );
-      return JSON.stringify(results);
+      return JSON.stringify(results.map((r) => ({
+        name: r.name,
+        lat: r.coordinates.lat,
+        lon: r.coordinates.lon,
+        type: r.type,
+      })));
     }
     case 'get_weather': {
       const weather = await getWeather({ lat: input.lat, lon: input.lon });
@@ -248,7 +269,14 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
         { lat: input.origin_lat, lon: input.origin_lon },
         { lat: input.dest_lat, lon: input.dest_lon }
       );
-      return result ? JSON.stringify(result) : 'Routing data unavailable.';
+      if (!result) return 'Routing data unavailable.';
+      const multiplier = input.road_type === 'technical' ? 2.5 : input.road_type === 'dirt' ? 1.6 : 1.0;
+      return JSON.stringify({
+        distanceMiles: result.distanceMiles,
+        driveTimeHours: Math.round(result.driveTimeHours * multiplier * 10) / 10,
+        road_type: input.road_type ?? 'paved',
+        note: multiplier > 1 ? `Off-road pacing applied (${multiplier}x highway time)` : undefined,
+      });
     }
     default:
       return 'Unknown tool.';
@@ -258,18 +286,25 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
 export async function runPlanningAgent(query: UserQuery): Promise<PlanResult> {
   const client = new Anthropic({ apiKey: config.anthropicKey });
 
-  // Geocode the start location upfront so we can render a start pin even on errors.
+  // Geocode upfront — we render a start pin immediately and pass coords to the agent
+  // so it skips the geocode_location iteration entirely.
   const startCoordinates = (await geocode(query.startingLocation)) ?? undefined;
   const reasoningSteps: ReasoningStep[] = [];
 
   const systemPrompt = `You are an expert overlanding trip planner for U.S.-based adventurers.
 Your job is to design 2-3 ALTERNATIVE multi-stop ROUTES the user can choose between.
 
+BEFORE YOUR FIRST TOOL CALL, write a brief planning note covering: (1) what region and cardinal directions you'll search, (2) any seasonal factors that apply right now, (3) the 2-3 route themes you'll pursue, and (4) what data sources are most likely to have good candidates. This takes one paragraph and will save you from wasted search iterations.
+
+THE OVERLANDING ETHOS (this shapes every recommendation):
+Overlanding is self-reliant vehicle-based adventure travel where the journey is the goal — not off-roading (conquering obstacles) and not RV travel (hookups and destinations). The rewards are history, wildlife, culture, scenery, and self-sufficiency. Always suggest scenic, exploratory routes. Build slack into the schedule for stops, side trips, and the unexpected. Frame destinations in terms of what's there to experience — not just terrain difficulty.
+
 ROUTE PLANNING MODEL:
 - Each route is an ordered sequence of campsite stops (one route = one journey).
 - Day trip: 1 destination per route.
 - Weekend: 2-3 stops per route along a logical loop or progression.
 - Multi-day expedition: 3-5 stops per route as a coherent journey.
+- Hub-and-spoke is underused — recommend it when a base camp location is great and has plenty to explore nearby. It saves daily teardown time and lets people actually rest.
 
 Each route MUST have a distinct character/theme — don't return three variations of the same trip:
 - One could be coastal/water-focused
@@ -279,6 +314,49 @@ Each route MUST have a distinct character/theme — don't return three variation
 - Or by experience type (solitude vs scenic landmarks)
 
 Give each route an evocative name (e.g. "The Coastal Loop", "Pisgah High-Country Run", "Cedar Mesa Solitude"). Within each route, geographic flow matters — avoid backtracking, prefer loops or progressions.
+
+PACING (dirt miles ≠ highway miles — apply these when estimating drive times):
+- Paved highway: 50–65 mph average including stops
+- Improved dirt / gravel forest road: 25–35 mph
+- Unimproved 2-track / rough dirt: 10–20 mph
+- Technical, rocky, sandy, or steep: 5–10 mph
+Comfortable daily distance leaving time for camp setup, exploration, photos, breakdowns:
+- All paved transit: 250–400 miles/day
+- Mixed paved + improved dirt: 150–250 miles/day
+- Mostly dirt with scenic stops: 50–120 miles/day
+- Technical and remote: 30–80 miles/day
+If a route would require 200+ dirt miles in a single day, flag it — that's a transit day, not an overlanding day.
+
+SEASONALITY (name the seasonal factor before recommending any region):
+- Snow & mud: high-elevation forest roads in CO, UT, WY, MT, ID often closed until June–July
+- Fire season: Aug–Oct western US — closures, smoke, burn bans likely
+- Monsoon: July–Sept desert SW — flash flood risk in slot canyons and washes
+- Heat: deserts (Death Valley, Mojave, Big Bend, Cabeza Prieta) dangerous May–Sept
+- Hunting season: forests get crowded in fall, especially rifle openers
+
+PUBLIC LAND HIERARCHY (most to least permissive for dispersed camping):
+1. BLM land — most permissive, dispersed camping almost everywhere, 14-day limit
+2. National Forest (USFS) — dispersed camping off most roads unless signed; verify via MVUM
+3. State Forests / State Trust Lands — rules vary; some require cheap permits
+4. National Parks — almost never allow dispersed camping; use designated sites
+5. Wilderness Areas — no vehicles at all
+6. Tribal Lands — require explicit tribal permission; never assume access
+7. Private land — needs landowner permission
+
+DISPERSED CAMPING GROUND RULES (apply as a checklist):
+- Camp at least 200 ft from any water source
+- Use existing fire rings — don't build new ones
+- Pack out everything including TP and food waste
+- Park on durable surfaces — don't crush vegetation
+- Check fire restrictions before lighting anything (Stage 1: no campfires outside developed rings; Stage 2: no open flames)
+- Follow Leave No Trace
+
+CAMPSITE SELECTION — always recommend a primary AND a backup:
+- Flat-enough spot for tent/rooftop tent setup
+- Plan to arrive before dark — build in a 2-hour buffer for finding it
+- Backup option within ~30 min in case the first is taken or unsuitable
+- Distance from road for privacy and dust
+- Frame specific spots as "check iOverlander for current reports" — dispersed spots are first-come and conditions change
 
 SAFETY RULES (non-negotiable):
 - If you find active wildfire perimeters OR more than 5 NASA satellite hotspots within 30 miles of ANY destination, issue a hard_refusal immediately.
@@ -291,6 +369,12 @@ VEHICLE TIERS (lowest to highest capability):
 - stock4wd: light dirt and maintained forest roads
 - lifted: rocky terrain, moderate off-road
 - overlander: technical routes, shelf roads, water crossings
+
+SELF-SUFFICIENCY LOGISTICS (flag these in reasoning when relevant):
+- Fuel: plan with 25% safety margin off rated range; dirt routes burn 20–30% more than highway; flag any leg over ~150 miles between stations
+- Water: 1 gal/person/day minimum, 2+ in heat or altitude; identify resupply points
+- Comms: assume no cell service in backcountry; recommend satellite communicator for any trip 24+ hours from pavement
+- Recovery: for remote solo travel, traction boards, full-size spare, plug kit, and air compressor are baseline
 
 PROCESS:
 1. Geocode the starting location.
@@ -332,12 +416,13 @@ User's vehicle tier: ${query.vehicleTier}
 Trip duration: ${query.duration}
 Max drive time (one-way): ${query.maxDriveHours} hours
 Comfort level: ${query.comfortLevel}
+Trip dates: ${query.tripStartDate ? `${query.tripStartDate} to ${query.tripEndDate ?? query.tripStartDate}` : 'not specified — use current seasonal conditions'}
 Additional constraints: ${query.freeformConstraints || 'none'}
 
 COMFORT LEVEL RULES (critical — this drives source mix and filtering):
 - "light": REQUIRE amenities. Prefer Recreation.gov reservable sites with toilets and water. Exclude dispersed/primitive spots. Prefer sites with cell service. Family-friendly default.
 - "medium": Prefer remote but not fully off-grid. Mix Recreation.gov and dispersed. Some cell coverage expected. The default overlanding experience.
-- "hard": Fully off-grid. Heavily favor dispersed camping (Overpass) and primitive BLM/USFS sites. No cell service required. Self-sufficient travelers only — no hand-holding. Soft-warn if any candidate is too close to populated areas.
+- "hard": Fully off-grid. Heavily favor dispersed camping and primitive BLM/USFS sites. No cell service required. Self-sufficient travelers only — no hand-holding. Soft-warn if any candidate is too close to populated areas.
 
 DURATION LOGIC (critical):
 - "day" trip: User needs to return same day. The destination should be no more than HALF of max drive time away (so total round-trip + activity time fits in one day). Aim for destinations 1-3 hours one-way max.
@@ -346,10 +431,15 @@ DURATION LOGIC (critical):
 
 If a candidate destination's one-way drive time exceeds the duration-appropriate limit, exclude it.`;
 
+  // Pass pre-geocoded coordinates so the agent skips the geocode_location tool call.
+  const coordHint = startCoordinates
+    ? ` Starting coordinates already resolved: lat=${startCoordinates.lat}, lon=${startCoordinates.lon} — skip geocode_location and begin searching immediately.`
+    : '';
+
   const messages: Anthropic.MessageParam[] = [
     {
       role: 'user',
-      content: `Find me overlanding destinations starting from: ${query.startingLocation}`,
+      content: `Find me overlanding destinations starting from: ${query.startingLocation}.${coordHint}`,
     },
   ];
 
@@ -364,11 +454,17 @@ If a candidate destination's one-way drive time exceeds the duration-appropriate
   for (let iteration = 0; iteration < 18; iteration++) {
     const response = await client.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 4096,
-      system: systemPrompt,
+      max_tokens: 8192,
+      system: [
+        {
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
       tools,
       messages,
-    });
+    } as any);
 
     // Capture text reasoning
     for (const block of response.content) {
@@ -390,17 +486,11 @@ If a candidate destination's one-way drive time exceeds the duration-appropriate
 
     if (response.stop_reason === 'tool_use') {
       const toolUseBlocks = response.content.filter((b) => b.type === 'tool_use');
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
+      // Check for terminal tools before launching any async work.
       for (const block of toolUseBlocks) {
         if (block.type !== 'tool_use') continue;
 
-        const step: ReasoningStep = {
-          thought: reasoningSteps[reasoningSteps.length - 1]?.thought ?? '',
-          action: `${block.name}(${JSON.stringify(block.input)})`,
-        };
-
-        // Handle terminal tools
         if (block.name === 'hard_refusal') {
           const input = block.input as { reason: string; triggered_by: string };
           finalResult = {
@@ -432,6 +522,7 @@ If a candidate destination's one-way drive time exceeds the duration-appropriate
                   safetyFlags: [],
                   score: s.score,
                   reasoning: s.reasoning,
+                  sourceUrl: s.source_url ?? undefined,
                 }));
               const totalMiles = validStops.reduce((sum, s) => sum + s.distanceMiles, 0);
               const totalDriveHours = validStops.reduce((sum, s) => sum + s.driveTimeHours, 0);
@@ -443,12 +534,33 @@ If a candidate destination's one-way drive time exceeds the duration-appropriate
                 stops: validStops,
                 totalMiles: Math.round(totalMiles),
                 totalDriveHours: Math.round(totalDriveHours * 10) / 10,
+                returnDistanceMiles: undefined as number | undefined,
+                returnDriveHours: undefined as number | undefined,
               };
             })
             .filter((r) => r.stops.length > 0);
 
-          step.observation = `Submitted ${routes.length} routes with ${routes.reduce((sum, r) => sum + r.stops.length, 0)} total stops.`;
-          reasoningSteps.push(step);
+          // Compute return legs in parallel — last stop → home for each route.
+          if (startCoordinates) {
+            await Promise.all(routes.map(async (route) => {
+              const lastStop = route.stops[route.stops.length - 1];
+              if (!lastStop) return;
+              const leg = await getDriveTime(
+                { lat: lastStop.coordinates.lat, lon: lastStop.coordinates.lon },
+                startCoordinates
+              );
+              if (leg) {
+                route.returnDistanceMiles = leg.distanceMiles;
+                route.returnDriveHours = leg.driveTimeHours;
+              }
+            }));
+          }
+
+          reasoningSteps.push({
+            thought: reasoningSteps[reasoningSteps.length - 1]?.thought ?? '',
+            action: 'submit_recommendations',
+            observation: `Submitted ${routes.length} routes with ${routes.reduce((sum, r) => sum + r.stops.length, 0)} total stops.`,
+          });
           finalResult = {
             status: 'done',
             routes,
@@ -459,17 +571,34 @@ If a candidate destination's one-way drive time exceeds the duration-appropriate
           };
           return finalResult;
         }
+      }
 
-        const observation = await executeTool(block.name, block.input as Record<string, any>);
-        step.observation = observation;
-        reasoningSteps.push(step);
+      // Execute all regular tool calls in parallel.
+      const regularBlocks = toolUseBlocks.filter(
+        (b) => b.type === 'tool_use' && b.name !== 'hard_refusal' && b.name !== 'submit_recommendations'
+      );
 
-        toolResults.push({
-          type: 'tool_result',
+      const observations = await Promise.all(
+        regularBlocks.map((block) => {
+          if (block.type !== 'tool_use') return Promise.resolve('');
+          return executeTool(block.name, block.input as Record<string, any>);
+        })
+      );
+
+      const toolResults: Anthropic.ToolResultBlockParam[] = regularBlocks.map((block, i) => {
+        if (block.type !== 'tool_use') return { type: 'tool_result' as const, tool_use_id: '', content: '' };
+        const observation = observations[i];
+        reasoningSteps.push({
+          thought: reasoningSteps[reasoningSteps.length - 1]?.thought ?? '',
+          action: `${block.name}(${JSON.stringify(block.input)})`,
+          observation,
+        });
+        return {
+          type: 'tool_result' as const,
           tool_use_id: block.id,
           content: observation,
-        });
-      }
+        };
+      });
 
       messages.push({ role: 'assistant', content: response.content });
       messages.push({ role: 'user', content: toolResults });

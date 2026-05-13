@@ -11,6 +11,8 @@ export interface UserQuery {
   vehicleTier: VehicleTier;
   comfortLevel: ComfortLevel;
   freeformConstraints: string;
+  tripStartDate?: string;
+  tripEndDate?: string;
 }
 
 export interface Coordinates {
@@ -43,6 +45,7 @@ export interface Destination {
   safetyFlags: SafetyFlag[];
   score: number;
   reasoning: string;
+  sourceUrl?: string;
 }
 
 export interface ReasoningStep {
@@ -61,6 +64,8 @@ export interface RouteOption {
   totalMiles: number;
   totalDriveHours: number;
   reasoning: string;
+  returnDistanceMiles?: number;
+  returnDriveHours?: number;
 }
 
 export interface PlanResult {

@@ -18,9 +18,9 @@ export default function ReasoningTrace({ steps, loading }: Props) {
         <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Agent Reasoning</span>
         {loading && (
           <span className="ml-auto flex gap-1">
-            <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-            <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-            <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            <span className="text-base leading-none animate-bounce" style={{ animationDelay: '0ms' }}>🐴</span>
+            <span className="text-base leading-none animate-bounce" style={{ animationDelay: '150ms' }}>🐴</span>
+            <span className="text-base leading-none animate-bounce" style={{ animationDelay: '300ms' }}>🐴</span>
           </span>
         )}
       </div>

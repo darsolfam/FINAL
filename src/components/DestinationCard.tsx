@@ -1,7 +1,7 @@
 'use client';
 
 import { Destination, TripDuration } from '@/types';
-import { Thermometer, Wind, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Thermometer, Wind, AlertTriangle, CheckCircle, ExternalLink } from 'lucide-react';
 import ItineraryView from './ItineraryView';
 
 interface Props {
@@ -12,6 +12,8 @@ interface Props {
   totalStops: number;
   nextStopName?: string;
   nextStopDriveHours?: number;
+  stopStartDate?: string;
+  stopEndDate?: string;
   onClick: () => void;
 }
 
@@ -29,7 +31,7 @@ const TIER_COLORS: Record<string, string> = {
   overlander: 'text-red-400 bg-red-400/10',
 };
 
-export default function DestinationCard({ destination: d, rank, selected, duration, totalStops, nextStopName, nextStopDriveHours, onClick }: Props) {
+export default function DestinationCard({ destination: d, rank, selected, duration, totalStops, nextStopName, nextStopDriveHours, stopStartDate, stopEndDate, onClick }: Props) {
   const hardFlags = d.safetyFlags.filter((f) => f.severity === 'hard');
   const softFlags = d.safetyFlags.filter((f) => f.severity === 'soft');
 
@@ -99,6 +101,18 @@ export default function DestinationCard({ destination: d, rank, selected, durati
 
       <p className="text-xs text-stone-500 mt-2 italic leading-relaxed">{d.reasoning}</p>
 
+      {d.sourceUrl && (
+        <a
+          href={d.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 mt-2"
+        >
+          <ExternalLink size={11} /> Official site
+        </a>
+      )}
+
       {selected && (
         <ItineraryView
           destination={d}
@@ -107,6 +121,8 @@ export default function DestinationCard({ destination: d, rank, selected, durati
           totalStops={totalStops}
           nextStopName={nextStopName}
           nextStopDriveHours={nextStopDriveHours}
+          stopStartDate={stopStartDate}
+          stopEndDate={stopEndDate}
         />
       )}
     </div>

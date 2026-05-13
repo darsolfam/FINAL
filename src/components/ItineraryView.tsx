@@ -11,9 +11,11 @@ interface Props {
   totalStops: number;
   nextStopName?: string;
   nextStopDriveHours?: number;
+  stopStartDate?: string;
+  stopEndDate?: string;
 }
 
-export default function ItineraryView({ destination, duration, stopIndex, totalStops, nextStopName, nextStopDriveHours }: Props) {
+export default function ItineraryView({ destination, duration, stopIndex, totalStops, nextStopName, nextStopDriveHours, stopStartDate, stopEndDate }: Props) {
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -38,6 +40,8 @@ export default function ItineraryView({ destination, duration, stopIndex, totalS
         totalStops,
         nextStopName,
         nextStopDriveHours,
+        stopStartDate,
+        stopEndDate,
       }),
     })
       .then((res) => (res.ok ? res.json() : Promise.reject()))
@@ -57,7 +61,7 @@ export default function ItineraryView({ destination, duration, stopIndex, totalS
     return () => {
       cancelled = true;
     };
-  }, [destination.id, duration]);
+  }, [destination.id, duration, stopStartDate, stopEndDate]);
 
   if (loading) {
     return (
