@@ -53,9 +53,11 @@ export async function POST(req: NextRequest) {
         'You are an overlanding trip planner. Generate a day-by-day itinerary covering ONLY this one stop. ' +
         'You will be told the EXACT number of days to cover — do not add extra days. ' +
         'Label each day with its actual calendar date (e.g. "Day 1 — Sat May 17"). ' +
-        'Day 1 is the arrival/drive-in day. The final day is the departure day (drive to next stop or home). ' +
+        'Day 1 is the arrival/drive-in day — on Day 1 the user MUST set up camp; tell them exactly where to camp (the named stop is the primary site) and suggest a nearby backup option within ~30 min in case it\'s taken. ' +
+        'The final day is the departure day (drive to next stop or home) — no camp needed on the final night here. ' +
+        'EVERY day that ends at this stop (Day 1 through the second-to-last day, or every day if there\'s only one) must end with a "Camp: [primary site name] (backup: [nearby alternative])" line. ' +
         'Each day starts with a one-line "Travel:" note (use actual hours/miles, or "no drive — camp day" for middle days). ' +
-        'Be concrete and specific. Keep the whole response under 220 words.',
+        'Be concrete and specific. Keep the whole response under 240 words.',
       messages: [
         {
           role: 'user',
