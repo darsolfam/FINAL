@@ -223,7 +223,9 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
         type: r.type,
         reservable: r.reservable,
         activities: r.activities.slice(0, 5),
-        source_url: `https://www.recreation.gov/camping/campgrounds/${r.id}`,
+        source_url: r.reservable
+          ? `https://www.recreation.gov/camping/campgrounds/${r.id}`
+          : `https://www.recreation.gov/search?q=${encodeURIComponent(r.name)}`,
       })));
     }
     case 'search_dispersed_camping': {
