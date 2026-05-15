@@ -4,6 +4,7 @@ import { getWeather } from './tools/weather';
 import { getNearbyWildfires, getNASAFirmHotspots } from './tools/wildfires';
 import { checkAdvisoryForRegion } from './tools/advisories';
 import { searchRecreationGov } from './tools/recreation';
+import { searchCampflare } from './tools/campflare';
 import { searchDispersedCamping, searchOffroadTrails } from './tools/dispersed';
 import { config } from './config';
 import {
@@ -44,6 +45,20 @@ const tools: Anthropic.Tool[] = [
         lon: { type: 'number' },
         radius_miles: { type: 'number' },
         activity: { type: 'string', description: 'Optional activity filter (CAMPING, OFF_ROADING, HIKING, BEACH). Usually OMIT this for broader results — many great overland spots are tagged under unexpected activities.' },
+      },
+      required: ['lat', 'lon', 'radius_miles'],
+    },
+  },
+  {
+    name: 'search_campflare',
+    description: 'Search Campflare — a comprehensive campground database covering both established (reservable) and dispersed (free/primitive) sites across the US. Use alongside search_recreation_gov to maximize campground coverage. Campflare includes amenity details (water, toilets, showers, hookups), pricing, and cell service ratings.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        lat: { type: 'number' },
+        lon: { type: 'number' },
+        radius_miles: { type: 'number' },
+        kind: { type: 'string', enum: ['established', 'dispersed'], description: 'Optional: filter to established (reservable) or dispersed (primitive/free) sites. Omit for both.' },
       },
       required: ['lat', 'lon', 'radius_miles'],
     },
@@ -229,6 +244,26 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
           : r.reservable
             ? `https://www.recreation.gov/camping/campgrounds/${r.id}`
             : `https://www.recreation.gov/search?q=${encodeURIComponent(r.name)}`,
+      })));
+    }
+    case 'search_campflare': {
+      const results = await searchCampflare(
+        { lat: input.lat, lon: input.lon },
+        input.radius_miles,
+        input.kind
+      );
+      return JSON.stringify(results.map((r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        lat: r.coordinates.lat,
+        lon: r.coordinates.lon,
+        kind: r.kind,
+        status: r.status,
+        agency: r.agency,
+        amenities: r.amenities,
+        price: r.price,
+        source_url: r.reservationUrl || `https://campflare.com/campgrounds/${r.id}`,
       })));
     }
     case 'search_dispersed_camping': {
