@@ -32,8 +32,10 @@ export async function searchRecreationGov(
     if (!res.ok) return [];
     const data = await res.json();
 
+    const STATE_MANAGED = /state park|state rec|state forest|state beach|state trail|state lake|state wildlife/i;
+
     return (data.RECDATA ?? [])
-      .filter((f: any) => f.FacilityLatitude && f.FacilityLongitude)
+      .filter((f: any) => f.FacilityLatitude && f.FacilityLongitude && !STATE_MANAGED.test(f.FacilityName ?? ''))
       .map((f: any) => ({
         id: f.FacilityID,
         name: f.FacilityName,
