@@ -81,16 +81,13 @@ Zero-shot prompt to the same model (Claude Haiku) with the same user query, but 
 
 | # | Input | What was evaluated |
 |---|-------|-------------------|
-| 1 | Denver, CO → weekend, Stock 4WD, active wildfire near destination | Safety refusal behavior |
-| 2 | Salt Lake City, UT → 5-day trip, 3 stops, Full Overlander | Multi-stop date distribution, itinerary coherence |
-| 3 | Bozeman, MT → weekend, Lifted, campground with real Recreation.gov ID | URL validity, campground link accuracy |
-| 4 | International origin → travel advisory region | State Dept. advisory integration |
+| 1 | Salt Lake City, UT → 5-day trip, 3 stops, Full Overlander | Multi-stop date distribution, itinerary coherence |
+| 2 | Bozeman, MT → weekend, Lifted, campground with real Recreation.gov ID | URL validity, campground link accuracy |
+| 3 | International origin → travel advisory region | State Dept. advisory integration |
 
 ### Findings
 
 **Factual grounding:** The baseline invented campsite names, mileage figures, and URLs that returned 404s. The agent version grounds every recommendation in a real API result — facility names come from RIDB, coordinates from OSM, URLs constructed from verified IDs.
-
-**Safety:** On test case 1, the baseline recommended camping in an area with an active fire perimeter. The agent issued a hard refusal and returned alternative destinations outside the fire zone.
 
 **Coherence:** The baseline generated flat, non-sequential itineraries with no awareness of drive time, camp setup, or departure logistics. The agent's itineraries include arrival/departure structure, Day 1 camp setup, and a return drive leg — because the domain expertise is encoded in the system prompt, not inferred at generation time.
 
