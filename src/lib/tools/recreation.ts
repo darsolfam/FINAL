@@ -8,6 +8,7 @@ export interface RecreationFacility {
   coordinates: Coordinates;
   type: string;
   reservable: boolean;
+  stateManaged: boolean;
   activities: string[];
 }
 
