@@ -1,8 +1,13 @@
-# Where Do We Go?
+# Where Do We Go? v2
 
 An AI-powered overlanding trip planner that uses a live ReAct agent to recommend multi-stop backcountry routes — grounded in real campground data, wildfire feeds, and weather forecasts.
 
 **Live app:** https://final-zeta-lime.vercel.app/
+
+### What's New in v2
+- **Campflare integration** — added Campflare's campground database as a second data source alongside Recreation.gov RIDB. The agent now searches both in parallel, expanding coverage to include amenity details (water, toilets, showers, hookups), nightly pricing, and cell service ratings not available in federal data alone.
+- **State park labeling** — RIDB results that are state-managed are now correctly identified, labeled, and linked to a search URL rather than a broken Recreation.gov page.
+- **Structural hallucination fixes** — two URL hallucinations caught during development were resolved at the architecture level (see Hallucinations section below).
 
 ---
 
@@ -158,8 +163,9 @@ Official site: https://www.recreation.gov/camping/campgrounds/232493
 | Geoapify | `GEOAPIFY_API_KEY` | https://myprojects.geoapify.com |
 | NASA FIRMS | `NASA_FIRMS_MAP_KEY` | https://firms.modaps.eosdis.nasa.gov/api/area/ |
 | Recreation.gov RIDB | `RECREATION_GOV_API_KEY` | https://ridb.recreation.gov/profile |
+| Campflare | `CAMPFLARE_API_KEY` | https://campflare.com/platform |
 
-`APP_ANTHROPIC_KEY` is required — the app will not respond without it. The other three degrade gracefully: missing keys return empty results for that data source rather than erroring.
+`APP_ANTHROPIC_KEY` is required — the app will not respond without it. The other four degrade gracefully: missing keys return empty results for that data source rather than erroring.
 
 ### Installation
 
@@ -178,6 +184,7 @@ APP_ANTHROPIC_KEY=your_anthropic_key_here
 GEOAPIFY_API_KEY=your_geoapify_key_here
 NASA_FIRMS_MAP_KEY=your_nasa_firms_key_here
 RECREATION_GOV_API_KEY=your_recreation_gov_key_here
+CAMPFLARE_API_KEY=your_campflare_key_here
 ```
 
 ### Run Locally
@@ -205,7 +212,7 @@ npm install -g vercel
 vercel
 ```
 
-Add the four environment variables in the Vercel dashboard under **Settings → Environment Variables** before deploying. Do not commit `.env.local` to version control.
+Add the five environment variables in the Vercel dashboard under **Settings → Environment Variables** before deploying. Do not commit `.env.local` to version control.
 
 ---
 
@@ -217,7 +224,7 @@ Add the four environment variables in the Vercel dashboard under **Settings → 
 | AI | Anthropic Claude Haiku 4.5 via `@anthropic-ai/sdk` |
 | Styling | Tailwind CSS v4 |
 | Icons | Lucide React |
-| Campgrounds | Recreation.gov RIDB API |
+| Campgrounds | Recreation.gov RIDB API + Campflare API v2 |
 | Weather | NWS / weather.gov |
 | Wildfires | NASA FIRMS satellite data |
 | Routing & Places | Geoapify |
