@@ -95,6 +95,18 @@ Zero-shot prompt to the same model (Claude Haiku) with the same user query, but 
 
 **URL validity:** Before server-side URL construction, the model invented URLs that did not exist. Post-fix, all URLs either point to verified RIDB facility pages or fall back to Recreation.gov name-based search queries that always resolve.
 
+### Hallucinations Caught and Fixed
+
+Two hallucinations were identified during demo preparation and corrected iteratively:
+
+**1. Invented URL (`visithomoer.com`)**
+The agent generated a campground recommendation with a fabricated website URL that returned a 404. Root cause: the model was asked to produce a `source_url` field and generated a plausible-looking but invented domain from training data. Fix: URLs are now constructed entirely server-side from verified API-returned IDs. The agent is explicitly prohibited from generating URLs in its schema instructions.
+
+**2. State park served via Recreation.gov URL**
+The RIDB API returned a state park facility (`Horsethief Reservoir State Park`) alongside federal sites. The app constructed a `recreation.gov/search?q=...` URL for it, which resolved to zero results — effectively a broken link. Root cause: Recreation.gov only indexes federal land; state parks exist in the RIDB database but have no corresponding Recreation.gov page. Fix: state-managed facilities are now detected by name pattern, labeled as `"State Park"` in the result, and linked to a Google search URL instead of Recreation.gov.
+
+Both fixes are structural rather than prompt-based — the model cannot reproduce either hallucination regardless of how it reasons, because the problematic outputs are no longer generated at the model layer.
+
 ---
 
 ## Artifact Snapshot
