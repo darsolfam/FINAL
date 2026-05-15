@@ -220,12 +220,15 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
         name: r.name,
         lat: r.coordinates.lat,
         lon: r.coordinates.lon,
-        type: r.type,
+        type: r.stateManaged ? 'State Park' : r.type,
         reservable: r.reservable,
+        note: r.stateManaged ? 'State-managed — not bookable on Recreation.gov' : undefined,
         activities: r.activities.slice(0, 5),
-        source_url: r.reservable
-          ? `https://www.recreation.gov/camping/campgrounds/${r.id}`
-          : `https://www.recreation.gov/search?q=${encodeURIComponent(r.name)}`,
+        source_url: r.stateManaged
+          ? `https://www.google.com/search?q=${encodeURIComponent(r.name)}`
+          : r.reservable
+            ? `https://www.recreation.gov/camping/campgrounds/${r.id}`
+            : `https://www.recreation.gov/search?q=${encodeURIComponent(r.name)}`,
       })));
     }
     case 'search_dispersed_camping': {

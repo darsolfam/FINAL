@@ -35,7 +35,7 @@ export async function searchRecreationGov(
     const STATE_MANAGED = /state park|state rec|state forest|state beach|state trail|state lake|state wildlife/i;
 
     return (data.RECDATA ?? [])
-      .filter((f: any) => f.FacilityLatitude && f.FacilityLongitude && !STATE_MANAGED.test(f.FacilityName ?? ''))
+      .filter((f: any) => f.FacilityLatitude && f.FacilityLongitude)
       .map((f: any) => ({
         id: f.FacilityID,
         name: f.FacilityName,
@@ -43,6 +43,7 @@ export async function searchRecreationGov(
         coordinates: { lat: f.FacilityLatitude, lon: f.FacilityLongitude },
         type: f.FacilityTypeDescription ?? 'Recreation Area',
         reservable: !!f.Reservable,
+        stateManaged: STATE_MANAGED.test(f.FacilityName ?? ''),
         activities: (f.ACTIVITY ?? []).map((a: any) => a.ActivityName).filter(Boolean),
       }));
   } catch {
