@@ -111,6 +111,9 @@ Both fixes are structural rather than prompt-based — the model cannot reproduc
 
 ## Artifact Snapshot
 
+### Demo Video
+[Watch the full demo on YouTube](https://youtu.be/veRrIUATqh8)
+
 ### Sample Input
 ```
 Starting from: Denver, CO
